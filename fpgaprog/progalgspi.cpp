@@ -295,24 +295,24 @@ bool ProgAlgSpi::Spi_Identify(bool verbose)
             SectorErase=1;
             FlashType=GENERIC;
             break;
-		  case 0x16: /* W25Q32 */
-			Pages=16384;
+	  case 0x16: /* W25Q32 */
+	    Pages=16384;
             PageSize=256;
             BulkErase=10;
             SectorErase=1;
             FlashType=GENERIC;
             break;
-		  case 0x17: /* W25Q64 */
-			Pages=32768;
+	  case 0x17: /* W25Q64 */
+	    Pages=32768;
             PageSize=256;
-            BulkErase=10;
+            BulkErase=100;
             SectorErase=1;
             FlashType=GENERIC;
             break;			
-		  case 0x18: /* W25Q128 */
-			Pages=65536;
+	  case 0x18: /* W25Q128 */
+	    Pages=65536;
             PageSize=256;
-            BulkErase=10;
+            BulkErase=200;
             SectorErase=1;
             FlashType=GENERIC;
             break;
