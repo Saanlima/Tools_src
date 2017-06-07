@@ -46,6 +46,7 @@ class ProgAlgXC3S
   static const byte ISC_ENABLE;
   static const byte ISC_DISABLE;
   static const byte BYPASS;
+  static const byte FUSE_DNA;
   Jtag *jtag;
   IOBase *io;
   int family;

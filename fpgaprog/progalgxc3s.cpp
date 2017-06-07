@@ -36,6 +36,7 @@ const byte ProgAlgXC3S::ISC_DNA=0x31;
 const byte ProgAlgXC3S::ISC_ENABLE=0x10;
 const byte ProgAlgXC3S::ISC_DISABLE=0x16;
 const byte ProgAlgXC3S::BYPASS=0x3f;
+const byte ProgAlgXC3S::FUSE_DNA=0x32;
 
 ProgAlgXC3S::ProgAlgXC3S(Jtag &j, IOBase &i, int fam)
 {
@@ -51,6 +52,10 @@ ProgAlgXC3S::ProgAlgXC3S(Jtag &j, IOBase &i, int fam)
     case 0x20: /* XC6S*/
       tck_len = 16;
       array_transfer_len = 16;
+      break;
+    case 0x1b: /* XC7A*/
+      tck_len = 12;
+      array_transfer_len = 32;
       break;
     default:
       tck_len = 12;
@@ -163,6 +168,21 @@ void ProgAlgXC3S::array_program(BitFile &file)
 		  data[4], data[5], data[6], data[7]);
 	break;
       }
+    case 0x1b: /* XC7A*/
+      {
+	byte data[8];
+	jtag->shiftIR(&ISC_ENABLE);
+	jtag->shiftIR(&FUSE_DNA);
+	jtag->shiftDR(0, data, 64);
+	io->cycleTCK(1);
+	if (*(long*)data != -1L)
+	  /* ISC_DNA only works on a unconfigured device, see AR #29977*/
+    if (io->getVerbose())
+  	  printf("DNA is 0x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+		  data[0], data[1], data[2], data[3],
+		  data[4], data[5], data[6], data[7]);
+	break;
+      }
     }
 
   /* use leagcy, if large transfers are faster then chunks */
@@ -192,6 +212,7 @@ void ProgAlgXC3S::Reconfigure()
       case 0x11: /* XC3SA*/
       case 0x13: /* XC3SAN*/
       case 0x20: /* XC6S*/
+//      case 0x1b: /* XC7A*/
       break;
     default:
       fprintf(stderr, "Device does not support reconfiguration.\n");
@@ -219,17 +240,37 @@ void ProgAlgXC3S::Reconfigure()
     byte xc6sbuf[12]= {0xff, 0xff, 0x55, 0x99, 0xaa, 0x66, 0x0c,
                        0x85, 0x00, 0x70, 0x04, 0x00};
 
+    /* FFFFFFFF Dummy Word
+       AA995566 Sync Word
+       20000000 Type 1 NO OP
+       30020001 Type 1 Write 1 Word to WBSTAR
+       00000000 Warm Boot Start Addredd
+       30008001 Type 1 Write 1 Word to CMD
+       0000000F IPROG Command
+       20000000 Type 1 NO OP
+    */
+    byte xc7abuf[32]= {0xff, 0xff, 0xff, 0xff,
+                      0x55, 0x99, 0xaa, 0x66,
+                      0x04, 0x00, 0x00, 0x00,
+                      0x0c, 0x40, 0x00, 0x80,
+                      0x00, 0x00, 0x00, 0x00,
+                      0x0c, 0x00, 0x01, 0x80,
+                      0x00, 0x00, 0x00, 0xf0,
+                      0x04, 0x00, 0x00, 0x00};
+
   jtag->shiftIR(&JSHUTDOWN);
-  io->cycleTCK(16);
+  io->cycleTCK(tck_len);
   jtag->shiftIR(&CFG_IN);
   if(io->getVerbose())
       fprintf(stderr, "Trying reconfigure\n");
-  if(family == 0x20) /*XC6S*/
+  if(family == 0x1b) /*XC7A*/
+     jtag->shiftDR(xc7abuf, NULL, 32*8 );
+  else if(family == 0x20) /*XC6S*/
      jtag->shiftDR(xc6sbuf, NULL, 12*8 );
   else
      jtag->shiftDR(xc3sbuf, NULL, 12*8 );
   jtag->shiftIR(&JSTART);
-  io->cycleTCK(32);
+  io->cycleTCK(2*tck_len);
   jtag->shiftIR(&BYPASS);
   io->cycleTCK(1);
 //  jtag->setTapState(Jtag::TEST_LOGIC_RESET);
@@ -350,6 +391,19 @@ void ProgAlgXC3S::getDNA()
       byte data[8];
       jtag->shiftIR(&ISC_ENABLE);
       jtag->shiftIR(&ISC_DNA);
+      jtag->shiftDR(0, data, 64);
+      io->cycleTCK(1);
+      if (*(long*)data != -1L)
+        printf("DNA is 0x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+          data[0], data[1], data[2], data[3],
+          data[4], data[5], data[6], data[7]);
+      break;
+    }
+    case 0x1b: /* XC7A*/
+    {
+      byte data[8];
+      jtag->shiftIR(&ISC_ENABLE);
+      jtag->shiftIR(&FUSE_DNA);
       jtag->shiftDR(0, data, 64);
       io->cycleTCK(1);
       if (*(long*)data != -1L)

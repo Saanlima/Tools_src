@@ -95,7 +95,7 @@ unsigned int get_id(Jtag &jtag, DeviceDB &db, int chainpos, bool verbose)
 void usage(char *name)
 {
     fprintf(stderr,
-      "\nUsage:\%s [-v] [-j] [-f <bitfile>] [-b <bitfile>] [-s e|v|p|a] [-c] [-C] [-r] [-A <addr>:<binfile>]\n"
+      "\nUsage:\%s [-v] [-j] [-e] [-f <bitfile>] [-b <bitfile>] [-s e|v|p|a] [-c] [-C] [-r] [-A <addr>:<binfile>] [-o <flash offset>]\n"
       "   -h\t\t\tprint this help\n"
       "   -v\t\t\tverbose output\n"
       "   -j\t\t\tDetect JTAG chain, nothing else\n"
@@ -106,9 +106,12 @@ void usage(char *name)
       "               \t\tp=Program Only or a=ALL (Default)\n"
       "   -c\t\t\tDisplay current status of FPGA\n"
       "   -C\t\t\tDisplay STAT Register of FPGA\n"
+      "   -i\t\t\tDisplay device DNA\n"
       "   -r\t\t\tTrigger a reconfiguration of FPGA\n"
+      "   -e\t\t\tEnable FTDI JTAG control on Digilent boards\n"
       "   -a <addr>:<binfile>\tAppend binary file at addr (in hex)\n"
-      "   -A <addr>:<binfile>\tAppend binary file at addr, bit reversed\n",name);
+      "   -A <addr>:<binfile>\tAppend binary file at addr, bit reversed\n"
+      "   -o <flash offset>\tWrite bit file at flash address <offset> (in hex)",name);
     exit(-1);
 }
 
@@ -147,6 +150,8 @@ int append_data(BitFile &fpga_bit, char *append_str, bool flip, int verbose)
 
 int main(int argc, char **argv)
 {
+    int major = 2;
+    int minor = 0;
     int chainpos = 0;
     int vendor = 0;
     int product = 0;
@@ -165,6 +170,8 @@ int main(int argc, char **argv)
     char *cFpga_fn=0;
     char *cBscan_fn=0;
     char *append_str = 0;
+    char *offset_str = 0;
+    int offset = 0;
     bool append_flip = true;
     ProgAlgSpi::Spi_Options_t spi_options=ProgAlgSpi::FULL;
     DeviceDB db(devicedb);
@@ -172,9 +179,12 @@ int main(int argc, char **argv)
     std::auto_ptr<IOBase>  io;
 
 
-    while ((c = getopt (argc, argv, "hd:b:f:s:A:a:jvcCri")) != EOF)
+    while ((c = getopt (argc, argv, "hd:b:f:s:A:a:o:jvcCrie")) != EOF)
         switch (c)
         {
+        case 'e':
+            subtype=FTDI_DIGILENT;
+            break;
         case 'r':
             reconfigure=true;
             break;
@@ -214,6 +224,10 @@ int main(int argc, char **argv)
         case 'b':
             cBscan_fn=(char*)malloc(strlen(optarg)+1);
             strcpy(cBscan_fn,optarg);
+            break;
+        case 'o':
+            offset_str=(char*)malloc(strlen(optarg)+1);
+            strcpy(offset_str,optarg);
             break;
         case 's':
             switch(optarg[0])
@@ -265,9 +279,17 @@ int main(int argc, char **argv)
     }
     else if( !cFpga_fn && !displaystatus && !detectchain && !reconfigure)
     {
-        //no option specified
-        fprintf(stderr, "No or ambiguous options specified.\n");
-        usage(argv[0]);
+        if (!verbose)
+        {
+            //no option specified
+            fprintf(stderr, "No or ambiguous options specified.\n");
+            usage(argv[0]);
+        }
+        else
+        {
+            printf("fpgaprog %d.%d\n", major, minor);
+            return 0;
+        }
     }
     else
     {
@@ -343,9 +365,31 @@ int main(int argc, char **argv)
                 if(append_str && !append_data(flash_bit, append_str,append_flip, verbose)) /* Try to append data */
                     return 1;
                 
+                if(offset_str)
+                {
+                    while(1)
+                    {
+                        char c = *offset_str;
+                        offset_str++;
+
+                        if(c == '\0') break;
+                        else if(c >= '0' && c <= '9') offset = offset * 16 + c - '0';
+                        else if(c >= 'A' && c <= 'F') offset = offset * 16 + c - 'A'+10;
+                        else if(c >= 'a' && c <= 'f') offset = offset * 16 + c - 'a'+10;
+                        else {
+                            fprintf(stderr,"Invalid offset address\n");
+                            return 1;
+                        }
+                    }
+                }
                 if(verbose)
-                  printf("\nProgramming External Flash Memory with \"%s\".\n", cFpga_fn);
-                result=alg1.ProgramSpi(flash_bit, spi_options);
+                {
+                  if (offset)
+                    printf("\nProgramming External Flash Memory with \"%s\" at offset 0x%x.\n", cFpga_fn, offset);
+                  else
+                    printf("\nProgramming External Flash Memory with \"%s\".\n", cFpga_fn);
+                }
+                result=alg1.ProgramSpi(flash_bit, spi_options, offset);
                 if (reconfigure)
                 {
                   alg.Reconfigure();
